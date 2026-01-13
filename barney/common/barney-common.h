@@ -111,9 +111,9 @@ namespace BARNEY_NS {
   };
 
   
-  template<typename T>
-  inline __both__
-  void swap(T &a, T &b) { T c = a; a = b; b = c; }
+  //template<typename T>
+  //inline __both__
+  //void swap(T &a, T &b) { T c = a; a = b; b = c; }
 
   /*! helper function to extrace 3f spatial component from 4f point-plus-scalar */
   inline __both__ vec3f getPos(vec4f v)

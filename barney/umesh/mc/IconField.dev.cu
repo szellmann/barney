@@ -42,8 +42,8 @@ namespace BARNEY_NS {
       = ti.getLaunchIndex().x
       + ti.getLaunchDims().x
       * ti.getLaunchIndex().y;
-    if (rayID == 0)
-      printf("iconfield whole-frame launch ...\n");
+    //if (rayID == 0)
+    //  printf("iconfield whole-frame launch ...\n");
   }
 #endif
 
