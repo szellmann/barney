@@ -31,6 +31,22 @@ namespace BARNEY_NS {
   }
 
   __host__ __device__
+  inline unsigned morton_encode2D(unsigned x, unsigned y)
+  {
+      auto separate_bits = [](unsigned n)
+      {
+          n &= 0x0000FFFF;
+          n = (n ^ (n <<  8)) & 0x00FF00FF;
+          n = (n ^ (n <<  4)) & 0x0F0F0F0F;
+          n = (n ^ (n <<  2)) & 0x33333333;
+          n = (n ^ (n <<  1)) & 0x55555555;
+          return n;
+      };
+  
+      return separate_bits(x) | (separate_bits(y) << 1);
+  }
+
+  __host__ __device__
   inline unsigned morton_encode3D(unsigned x, unsigned y, unsigned z)
   {
     auto separate_bits = [](unsigned n) {
@@ -75,6 +91,39 @@ namespace BARNEY_NS {
     float value;
   };
 
+  __host__ __device__
+  inline bool compLonLat(const ICONLayer &l1, const ICONLayer &l2) {
+    auto fix_P1 = [](float &f) {
+      float ff = f;
+      if (ff > 1e-5f) ff-=M_PI;
+      if (ff > 1e-5f) ff-=M_PI;
+      ff = roundf(ff);
+      if (ff == 0.f) f = ff;
+    };
+
+    auto fix_P3 = [=](vec3f &v) {
+      fix_P1(v.x);
+      fix_P1(v.y);
+      fix_P1(v.z);
+    };
+
+    vec3f diff_lon(
+        fabsf(l1.lon.x-l2.lon.x),
+        fabsf(l1.lon.y-l2.lon.y),
+        fabsf(l1.lon.z-l2.lon.z));
+    fix_P3(diff_lon);
+    if (length(diff_lon) > 1e-3f) return false;
+
+    vec3f diff_lat(
+        fabsf(l1.lat.x-l2.lat.x),
+        fabsf(l1.lat.y-l2.lat.y),
+        fabsf(l1.lat.z-l2.lat.z));
+    fix_P3(diff_lat);
+    if (length(diff_lat) > 1e-3f) return false;
+
+    return true;
+  }
+
   struct CompareMorton
   {
     __host__ __device__ bool operator()(const ICONLayer &a, const ICONLayer &b)
@@ -106,13 +155,21 @@ namespace BARNEY_NS {
     const vec3f sv0 = toSpherical(v0);
     const vec3f sv1 = toSpherical(v1);
     const vec3f sv2 = toSpherical(v2);
-    const vec3f sv3 = toSpherical(v3);
-    const vec3f sv4 = toSpherical(v4);
-    const vec3f sv5 = toSpherical(v5);
+
+    //if (cellID<=10) {
+    //  printf("%i %f,%f,%f %f,%f,%f %f,%f,%f\n",
+    //      cellID,
+    //      sv0.x,sv0.y,sv0.z,
+    //      sv1.x,sv1.y,sv1.z,
+    //      sv2.x,sv2.y,sv2.z);
+    //}
+    //const vec3f sv3 = toSpherical(v3);
+    //const vec3f sv4 = toSpherical(v4);
+    //const vec3f sv5 = toSpherical(v5);
 
     // spherical centroids:
     const vec3f sc0 = (sv0+sv1+sv2)/3.f;
-    const vec3f sc1 = (sv3+sv4+sv5)/3.f;
+    //const vec3f sc1 = (sv3+sv4+sv5)/3.f;
 
     // values:
     const float valueBot = field.scalars[I[0]];
@@ -123,6 +180,7 @@ namespace BARNEY_NS {
     // Morton code for base triangle:
     const box3f bounds = field.worldBounds;
     const vec3f qc0 = (c0-bounds.lower)/bounds.size();
+    const vec2f qsc0(sc0.y/(2*M_PI),sc0.z/(2*M_PI));
     
 
     // construct layer:
@@ -133,9 +191,12 @@ namespace BARNEY_NS {
     layer.value = (valueBot+valueTop)*0.5f;
     // quantize, but avoid too much precision, otherwise
     // the morton codes will be falsely different......
-    layer.mortonID = morton_encode3D((unsigned long long)(qc0.x*(2<<10)),
-                                     (unsigned long long)(qc0.y*(2<<10)),
-                                     (unsigned long long)(qc0.z*(2<<10)));
+    //layer.mortonID = morton_encode3D((unsigned long long)(qc0.x*(2<<20)),
+    //                                 (unsigned long long)(qc0.y*(2<<20)),
+    //                                 (unsigned long long)(qc0.z*(2<<20)));
+    layer.mortonID = morton_encode3D(0ull,
+                                     (unsigned long long)(qsc0.x*(2<<20)),
+                                     (unsigned long long)(qsc0.y*(2<<20)));
 
     // if (cellID<15) {
     //   printf("%f,%f,%f\n",qc0.x,qc0.y,qc0.z);
@@ -162,22 +223,58 @@ namespace BARNEY_NS {
 
     int left = cellID;
     while (left > 0) {
-      if (layers[left-1].mortonID != mortonID) break;
+      if (!compLonLat(layers[left-1],layer)) break;
       left--;
       if (cellID-left > 120) break;
     }
 
     int right = left+1;
     while (right < numCells) {
-      if (layers[right].mortonID != mortonID) break;
+      if (!compLonLat(layers[right],layer)) break;
       right++;
       if (right-cellID > 120) break;
     }
 
-    int numLayers = right-left+1;
+    int numLayers = right-left;
 
     atomicMin(minLayers,numLayers);
     atomicMax(maxLayers,numLayers);
+  }
+
+  __global__ void mergeLayers(ICONCell *cells, ICONLayer *layers, int numICONCells, int layersPerCell)
+  {
+    int cellID = threadIdx.x+blockIdx.x*blockDim.x;
+    if (cellID >= numICONCells)
+      return;
+
+    int layerID = cellID * layersPerCell;
+
+    for (int l=0; l<layersPerCell; ++l) {
+      cells[cellID].height[l] = FLT_MAX;
+    }
+
+    // insert height/values pairs sorted:
+    for (int l=0; l<layersPerCell; ++l) {
+      const ICONLayer &layer = layers[layerID*layersPerCell+l];
+      int idx=0;
+      while (cells[cellID].height[idx] < layer.height) {
+        idx++;
+      }
+      assert(idx < ICONCell::MaxLayers-1);
+      for (int l=layersPerCell; l>idx; --l) {
+        cells[cellID].height[l] = cells[cellID].height[l-1];
+        cells[cellID].value[l] = cells[cellID].value[l-1];
+      }
+      cells[cellID].height[idx] = layer.height;
+      cells[cellID].value[idx] = layer.value;
+    }
+
+    for (int l=0; l<layersPerCell; ++l) {
+      if(cellID<10) {
+        printf("cellID: %i,height: %f, value: %f\n",
+            cellID,cells[cellID].height[l],cells[cellID].value[l]);
+      }
+    }
   }
 
   RTC_IMPORT_TRIANGLES_GEOM(/*file*/IconField,/*name*/IconField,
@@ -316,11 +413,37 @@ namespace BARNEY_NS {
     auto creatorFunction = createGeomType_IconField;
     for (auto device : *field->devices) {
       ICONLayer *d_layers{nullptr};
+#if 0
+      std::vector<vec3f> vertices(field->vertices->size()/sizeof(vec3f));
+      field->vertices->download(device,vertices.data());
+      std::vector<int> indices(field->indices->size()/sizeof(int));
+      field->indices->download(device,indices.data());
+      std::vector<int> cellOffsets(field->cellOffsets->size()/sizeof(int));
+      field->cellOffsets->download(device,cellOffsets.data());
+      for (int cellID=0;cellID<50;++cellID) {
+        const int *I = indices.data() + cellOffsets[cellID];
+        auto bv1 = vertices[I[0]];
+        auto bv2 = vertices[I[1]];
+        auto bv3 = vertices[I[2]];
+        auto tv1 = vertices[I[3]];
+        auto tv2 = vertices[I[4]];
+        auto tv3 = vertices[I[5]];
+        const vec3f sv0 = toSpherical(v0);
+        const vec3f sv1 = toSpherical(v1);
+        const vec3f sv2 = toSpherical(v2);
+        const vec3f sc0 = (sv0+sv1+sv2)/3.f;
+        std::cout << sv0 << sv1 << sv2 << '\n';
+        //std::cout << cellID/5 << '\n';
+        //std::cout << bv1 << bv2 << bv3 << '\n';
+        //std::cout << tv1 << tv2 << tv3 << '\n';
+        //std::cout << '\n';
+      }
+#endif
       BARNEY_CUDA_CALL(Malloc(&d_layers, sizeof(ICONLayer)*field->numCells));
       computeLayers<<<divRoundUp(field->numCells,1024),1024>>>(
             d_layers, field->getDD(device));
+
       // Sort layers refs by morton codes
-      // THIS CRASHES, but why???!!!
       void* d_temp_storage = nullptr;
       size_t temp_storage_bytes = 0;
       cub::DeviceMergeSort::StableSortKeys(
@@ -339,6 +462,7 @@ namespace BARNEY_NS {
           CompareMorton()
           );
       BARNEY_CUDA_CALL(Free(d_temp_storage));
+
       int *d_minLayers, *d_maxLayers;
       BARNEY_CUDA_CALL(Malloc(&d_minLayers, sizeof(int)));
       BARNEY_CUDA_CALL(Malloc(&d_maxLayers, sizeof(int)));
@@ -354,11 +478,25 @@ namespace BARNEY_NS {
       BARNEY_CUDA_CALL(Memcpy(&maxLayers, d_maxLayers, sizeof(maxLayers), cudaMemcpyDeviceToHost));
       std::cout << "Seems we have [min:max] layers: [" << minLayers << ':' << maxLayers << "]\n";
 
-      BARNEY_CUDA_CALL(Free(d_layers));
-      cudaDeviceSynchronize();
-      //exit(0);
+      if (minLayers != maxLayers) {
+        // TODO....:
+        std::cerr << "That doesn't match......\n";
+        exit(0);
+      }
+
+      int numICONCells = field->numCells/minLayers;
+
       auto rtc = device->rtc;
       PLD *pld = getPLD(device);
+
+      // Merge layers
+      BARNEY_CUDA_CALL(Malloc(&pld->cells, numICONCells*sizeof(ICONCell)));
+      mergeLayers<<<divRoundUp(numICONCells,1024),1024>>>(
+            pld->cells, d_layers, numICONCells, minLayers);
+
+      BARNEY_CUDA_CALL(Free(d_layers));
+      cudaDeviceSynchronize();
+    
       if (!pld->baseTrisTLAS) {
         // create a rtc group (ie tlas) for the given object that we
         // can trace rays against, over a single triangle mesh

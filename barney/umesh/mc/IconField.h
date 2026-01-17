@@ -21,7 +21,48 @@
 namespace BARNEY_NS {
   using render::Ray;
   using render::DeviceMaterial;
- 
+
+  struct ICONCell {
+    enum { MaxLayers = 32 };
+
+    // Latitude, per triangle corner, in ccw order
+    vec3f lat;
+
+    // Longitude, per triangle corner, in ccw order
+    vec3f lon;
+
+    // Per-layer values:
+
+    // Number of layers
+    int numLayers;
+
+    // Height per layer, in [0:numLayers] (right-closed!)
+    float height[MaxLayers];
+
+    // Value per layer, in [0:numLayers) (right-open!)
+    float value[MaxLayers];
+
+    inline __device__ float getValue(float hpos) const
+    {
+      // interpolate value
+      for (int i=0; i<numLayers; ++i) {
+        float h0 = height[i];
+        float h1 = height[i+1];
+    
+        if (hpos >= h0 && hpos <= h1) {
+          int i_prev = i==0 ? i : i-1;
+          int i_next = i<numLayers-1 ? i+1 : i;
+          float v0 = (value[i_prev] + value[i]) * 0.5f;
+          float v1 = (value[i] + value[i_next]) * 0.5f;
+          float f = (hpos-h0)/(h1-h0);
+          return v0*(1.f-f) + v1*f;
+        }
+      }
+      // should never get here!
+      return {};
+    }
+  };
+
   struct IconMultiPassSampler : public ScalarFieldSampler {
     typedef std::shared_ptr<IconMultiPassSampler> SP;
     /* the inherited DD type that the VolumeAccel needs to have in
@@ -33,11 +74,13 @@ namespace BARNEY_NS {
         return 0.f;
       };
       rtc::AccelHandle triMeshAccel;
+      ICONCell *cells;
     };
     
     struct PLD {
       rtc::Group *baseTrisTLAS = 0;
       rtc::TraceKernel2D *rayGen = 0;
+      ICONCell *cells;
     };
     PLD *getPLD(Device *device);
     std::vector<PLD> perLogical;
