@@ -39,6 +39,9 @@ namespace BARNEY_NS {
       /*! this device's world to trace rays into */
       rtc::AccelHandle accel;
       World::DD        world;
+
+      /*! passed in by user (todo?!) */
+      void            *userData;
     };
   }
 }

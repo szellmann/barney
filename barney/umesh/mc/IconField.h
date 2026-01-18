@@ -74,13 +74,13 @@ namespace BARNEY_NS {
         return 0.f;
       };
       rtc::AccelHandle triMeshAccel;
-      ICONCell *cells;
     };
     
     struct PLD {
       rtc::Group *baseTrisTLAS = 0;
       rtc::TraceKernel2D *rayGen = 0;
-      ICONCell *cells;
+      ICONCell *cells = nullptr;
+      int numCells = 0;
     };
     PLD *getPLD(Device *device);
     std::vector<PLD> perLogical;

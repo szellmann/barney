@@ -269,12 +269,12 @@ namespace BARNEY_NS {
       cells[cellID].value[idx] = layer.value;
     }
 
-    for (int l=0; l<layersPerCell; ++l) {
-      if(cellID<10) {
-        printf("cellID: %i,height: %f, value: %f\n",
-            cellID,cells[cellID].height[l],cells[cellID].value[l]);
-      }
-    }
+    // for (int l=0; l<layersPerCell; ++l) {
+    //   if(cellID==3) {
+    //     printf("cellID: %i,height: %f, value: %f\n",
+    //         cellID,cells[cellID].height[l],cells[cellID].value[l]);
+    //   }
+    // }
   }
 
   RTC_IMPORT_TRIANGLES_GEOM(/*file*/IconField,/*name*/IconField,
@@ -352,10 +352,11 @@ namespace BARNEY_NS {
     dd.rays = rays;
     dd.numRays = numRays;
     dd.accel = sampler->getPLD(device)->baseTrisTLAS->getDD();
+    dd.userData = (void *)sampler->getPLD(device)->cells;
     rayGen->launch(/* bs,nb intentionally inverted:
                       always have 1024 in width: */
                    vec2i(bs,nb),
-                   &dd);
+                   &dd);cudaDeviceSynchronize();
   }
 
   IconMultiPassAccel::IconMultiPassAccel(Volume *volume,
@@ -407,108 +408,100 @@ namespace BARNEY_NS {
       bounds.lower.y,
       bounds.upper.z
     };
-    vec3f vtx[3] = { v0,v1,v2 };
-    vec3i idx(0,1,2);
 
     auto creatorFunction = createGeomType_IconField;
-    for (auto device : *field->devices) {
-      ICONLayer *d_layers{nullptr};
-#if 0
-      std::vector<vec3f> vertices(field->vertices->size()/sizeof(vec3f));
-      field->vertices->download(device,vertices.data());
-      std::vector<int> indices(field->indices->size()/sizeof(int));
-      field->indices->download(device,indices.data());
-      std::vector<int> cellOffsets(field->cellOffsets->size()/sizeof(int));
-      field->cellOffsets->download(device,cellOffsets.data());
-      for (int cellID=0;cellID<50;++cellID) {
-        const int *I = indices.data() + cellOffsets[cellID];
-        auto bv1 = vertices[I[0]];
-        auto bv2 = vertices[I[1]];
-        auto bv3 = vertices[I[2]];
-        auto tv1 = vertices[I[3]];
-        auto tv2 = vertices[I[4]];
-        auto tv3 = vertices[I[5]];
-        const vec3f sv0 = toSpherical(v0);
-        const vec3f sv1 = toSpherical(v1);
-        const vec3f sv2 = toSpherical(v2);
-        const vec3f sc0 = (sv0+sv1+sv2)/3.f;
-        std::cout << sv0 << sv1 << sv2 << '\n';
-        //std::cout << cellID/5 << '\n';
-        //std::cout << bv1 << bv2 << bv3 << '\n';
-        //std::cout << tv1 << tv2 << tv3 << '\n';
-        //std::cout << '\n';
-      }
-#endif
-      BARNEY_CUDA_CALL(Malloc(&d_layers, sizeof(ICONLayer)*field->numCells));
-      computeLayers<<<divRoundUp(field->numCells,1024),1024>>>(
-            d_layers, field->getDD(device));
-
-      // Sort layers refs by morton codes
-      void* d_temp_storage = nullptr;
-      size_t temp_storage_bytes = 0;
-      cub::DeviceMergeSort::StableSortKeys(
-          d_temp_storage,
-          temp_storage_bytes,
-          d_layers,
-          field->numCells,
-          CompareMorton()
-          );
-      BARNEY_CUDA_CALL(Malloc(&d_temp_storage, temp_storage_bytes));
-      cub::DeviceMergeSort::StableSortKeys(
-          d_temp_storage,
-          temp_storage_bytes,
-          d_layers,
-          field->numCells,
-          CompareMorton()
-          );
-      BARNEY_CUDA_CALL(Free(d_temp_storage));
-
-      int *d_minLayers, *d_maxLayers;
-      BARNEY_CUDA_CALL(Malloc(&d_minLayers, sizeof(int)));
-      BARNEY_CUDA_CALL(Malloc(&d_maxLayers, sizeof(int)));
-
-      int minLayers{INT_MAX}, maxLayers{0};
-      BARNEY_CUDA_CALL(Memcpy(d_minLayers, &minLayers, sizeof(minLayers), cudaMemcpyHostToDevice));
-      BARNEY_CUDA_CALL(Memcpy(d_maxLayers, &maxLayers, sizeof(maxLayers), cudaMemcpyHostToDevice));
-
-      guessNumLayers<<<divRoundUp(field->numCells,1024),1024>>>(
-            d_minLayers, d_maxLayers, d_layers, field->numCells);
-
-      BARNEY_CUDA_CALL(Memcpy(&minLayers, d_minLayers, sizeof(minLayers), cudaMemcpyDeviceToHost));
-      BARNEY_CUDA_CALL(Memcpy(&maxLayers, d_maxLayers, sizeof(maxLayers), cudaMemcpyDeviceToHost));
-      std::cout << "Seems we have [min:max] layers: [" << minLayers << ':' << maxLayers << "]\n";
-
-      if (minLayers != maxLayers) {
-        // TODO....:
-        std::cerr << "That doesn't match......\n";
-        exit(0);
-      }
-
-      int numICONCells = field->numCells/minLayers;
-
+    for (auto device : *field->devices) { 
       auto rtc = device->rtc;
       PLD *pld = getPLD(device);
 
-      // Merge layers
-      BARNEY_CUDA_CALL(Malloc(&pld->cells, numICONCells*sizeof(ICONCell)));
-      mergeLayers<<<divRoundUp(numICONCells,1024),1024>>>(
-            pld->cells, d_layers, numICONCells, minLayers);
+      if (!pld->cells) {
+        ICONLayer *d_layers{nullptr};
+        BARNEY_CUDA_CALL(Malloc(&d_layers, sizeof(ICONLayer)*field->numCells));
+        computeLayers<<<divRoundUp(field->numCells,1024),1024>>>(
+              d_layers, field->getDD(device));
 
-      BARNEY_CUDA_CALL(Free(d_layers));
-      cudaDeviceSynchronize();
+        // Sort layers refs by morton codes
+        void* d_temp_storage = nullptr;
+        size_t temp_storage_bytes = 0;
+        cub::DeviceMergeSort::StableSortKeys(
+            d_temp_storage,
+            temp_storage_bytes,
+            d_layers,
+            field->numCells,
+            CompareMorton()
+            );
+        BARNEY_CUDA_CALL(Malloc(&d_temp_storage, temp_storage_bytes));
+        cub::DeviceMergeSort::StableSortKeys(
+            d_temp_storage,
+            temp_storage_bytes,
+            d_layers,
+            field->numCells,
+            CompareMorton()
+            );
+        BARNEY_CUDA_CALL(Free(d_temp_storage));
+
+        int *d_minLayers, *d_maxLayers;
+        BARNEY_CUDA_CALL(Malloc(&d_minLayers, sizeof(int)));
+        BARNEY_CUDA_CALL(Malloc(&d_maxLayers, sizeof(int)));
+
+        int minLayers{INT_MAX}, maxLayers{0};
+        BARNEY_CUDA_CALL(Memcpy(d_minLayers, &minLayers, sizeof(minLayers), cudaMemcpyHostToDevice));
+        BARNEY_CUDA_CALL(Memcpy(d_maxLayers, &maxLayers, sizeof(maxLayers), cudaMemcpyHostToDevice));
+
+        guessNumLayers<<<divRoundUp(field->numCells,1024),1024>>>(
+              d_minLayers, d_maxLayers, d_layers, field->numCells);
+
+        BARNEY_CUDA_CALL(Memcpy(&minLayers, d_minLayers, sizeof(minLayers), cudaMemcpyDeviceToHost));
+        BARNEY_CUDA_CALL(Memcpy(&maxLayers, d_maxLayers, sizeof(maxLayers), cudaMemcpyDeviceToHost));
+        std::cout << "Seems we have [min:max] layers: [" << minLayers << ':' << maxLayers << "]\n";
+
+        if (minLayers != maxLayers) {
+          // TODO....:
+          std::cerr << "That doesn't match......\n";
+          exit(0);
+        }
+
+        int numICONCells = field->numCells/minLayers;
+
+        // Merge layers
+        BARNEY_CUDA_CALL(Malloc(&pld->cells, numICONCells*sizeof(ICONCell)));
+        mergeLayers<<<divRoundUp(numICONCells,1024),1024>>>(
+              pld->cells, d_layers, numICONCells, minLayers);
+
+        BARNEY_CUDA_CALL(Free(d_layers));
+        pld->numCells = numICONCells;
+      }
     
       if (!pld->baseTrisTLAS) {
+        // TODO: convdert on the device (does rtc::Buffer support that?):
+        std::vector<vec3f> vtx;
+        std::vector<vec3i> idx;
+        std::vector<ICONCell> hCells(pld->numCells);
+        BARNEY_CUDA_CALL(Memcpy(hCells.data(), pld->cells,
+                                pld->numCells*sizeof(ICONCell),
+                                cudaMemcpyDeviceToHost));
+        for (size_t i=0; i<hCells.size(); ++i) {
+          const ICONCell &cell = hCells[i];
+          vec3f v1 = toCartesian({cell.height[0],cell.lat.x,cell.lon.x});
+          vec3f v2 = toCartesian({cell.height[0],cell.lat.y,cell.lon.y});
+          vec3f v3 = toCartesian({cell.height[0],cell.lat.z,cell.lon.z});
+          vtx.push_back(v1);
+          vtx.push_back(v2);
+          vtx.push_back(v3);
+          idx.push_back({int(i)*3,int(i)*3+1,int(i)*3+2});
+        }
+
         // create a rtc group (ie tlas) for the given object that we
         // can trace rays against, over a single triangle mesh
-        rtc::Buffer *vertices = rtc->createBuffer(3*sizeof(vec3f),vtx);
-        rtc::Buffer *indices = rtc->createBuffer(1*sizeof(vec3i),&idx);
+        rtc::Buffer *vertices = rtc->createBuffer(vtx.size()*sizeof(vec3f),vtx.data());
+        rtc::Buffer *indices = rtc->createBuffer(idx.size()*sizeof(vec3i),idx.data());
         rtc::GeomType *gt
           = device->geomTypes.get(creatorFunction);
         rtc::Geom *geom
           = gt->createGeom();
-        geom->setPrimCount(1);
-        geom->setVertices(vertices, 3);
-        geom->setIndices(indices, 1);
+        geom->setPrimCount(idx.size());
+        geom->setVertices(vertices, vtx.size());
+        geom->setIndices(indices, idx.size());
         rtc::Group *blas = rtc->createTrianglesGroup({geom});
         blas->buildAccel();
         rtc::Group *tlas = rtc->createInstanceGroup({blas},{},{});
