@@ -74,11 +74,11 @@ namespace BARNEY_NS {
         return 0.f;
       };
       rtc::AccelHandle triMeshAccel;
+      ICONCell *cells;
     };
     
     struct PLD {
       rtc::Group *baseTrisTLAS = 0;
-      rtc::TraceKernel2D *rayGen = 0;
       ICONCell *cells = nullptr;
       int numCells = 0;
     };
@@ -100,12 +100,35 @@ namespace BARNEY_NS {
     UMeshField *const field;
   };
 
+  /*! the 'VolumeAccel' that barney requires each volume to be able to
+      create for each instance of a (anari-)volume being created. will
+      actually create a IconMultiPassLaumch object */
+  struct IconMultiPassAccel : public MCVolumeAccel<IconMultiPassSampler>,
+                              public std::enable_shared_from_this<IconMultiPassAccel> {
+    typedef std::shared_ptr<IconMultiPassAccel> SP;
+
+    IconMultiPassAccel(Volume *volume,
+                       IconMultiPassSampler::SP sampler);
+    
+    void build(bool full_rebuild) override;
+    
+    IconMultiPassSampler::SP const sampler;
+
+    struct PLD {
+      rtc::TraceKernel2D *rayGen = 0;
+    };
+    PLD *getPLD(Device *device);
+    std::vector<PLD> perLogical;
+  };
+
+
   /*! the class/object that does the actual optix launch for (each one
       of) our pass(es) */
   struct IconMultiPassLaunch : MultiPassObject {
-    IconMultiPassLaunch(IconMultiPassSampler::SP sampler)
-      : sampler(sampler)
-    {}
+    IconMultiPassLaunch(IconMultiPassSampler::SP sampler, IconMultiPassAccel::SP accel)
+      : sampler(sampler), accel(accel)
+    {
+    }
     
     void launch(Device *device,
                 const render::World::DD &world,
@@ -114,20 +137,7 @@ namespace BARNEY_NS {
                 int numRays) override;
     
     IconMultiPassSampler::SP const sampler;
+    IconMultiPassAccel::SP const accel;
   };
-
-  /*! the 'VolumeAccel' that barney requires each volume to be able to
-      create for each instance of a (anari-)volume being created. will
-      actually create a IconMultiPassLaumch object */
-  struct IconMultiPassAccel : public MCVolumeAccel<IconMultiPassSampler> {
-
-    IconMultiPassAccel(Volume *volume,
-                       IconMultiPassSampler::SP sampler);
-    
-    void build(bool full_rebuild) override;
-    
-    IconMultiPassSampler::SP const sampler;
-  };
-
   
 }

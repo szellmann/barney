@@ -24,6 +24,24 @@ namespace BARNEY_NS {
       { /* TODO: getPRD, then set appropriate triangle ID */
         auto &prd = *(IconMultiPassSampler::PRD *)ti.getPRD();
         prd.primID = ti.getPrimitiveIndex();
+
+        auto &lp = OptixGlobals::get(ti);
+
+        const IconMultiPassSampler::DD &self = (IconMultiPassSampler::DD &)lp.userData;
+            //= *(IconMultiPassSampler::DD*)ti.getProgramData();
+
+        const int rayID
+          = ti.getLaunchIndex().x
+          + ti.getLaunchDims().x
+          * ti.getLaunchIndex().y;
+
+        Ray &ray = lp.rays[rayID];
+        float t = optixGetRayTmax();
+        vec4f sample;// = self.xf.map(0.5f);
+        //if (ray.dbg()) {
+        vec3f P = ray.org + ray.dir*t;
+        vec3f albedo(1.f);
+        ray.setVolumeHit(P,t,(const vec3f &)sample);
       }
       
     };
@@ -47,6 +65,8 @@ namespace BARNEY_NS {
       //if (rayID == 0)
       //  printf("iconfield whole-frame launch ...\n");
 
+      const IconMultiPassSampler::DD &self
+          = *(IconMultiPassSampler::DD*)ti.getProgramData();
       auto &lp = OptixGlobals::get(ti);
 
       if (rayID >= lp.numRays)
@@ -70,9 +90,9 @@ namespace BARNEY_NS {
       box3f b(vec3f(-39587.1,0.164928,6.36584e+06),vec3f(211866,186394,6.37164e+06));
       float t0,t1;
       boxTest(t0,t1,b,ray.org,ray.dir);
-      if (ray.tMax < 100000000.f) {
-        printf("%f\n",ray.tMax);
-      }
+      //if (ray.hadHit()) {
+      //  printf("%f\n",ray.tMax);
+      //}
       if (t0<t1) {
         //printf("t0:%f\n",t0);
         ray.tMax = t0;

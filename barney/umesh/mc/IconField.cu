@@ -247,7 +247,11 @@ namespace BARNEY_NS {
     if (cellID >= numICONCells)
       return;
 
+    // ID of first layer:
     int layerID = cellID * layersPerCell;
+
+    cells[cellID].lon = layers[layerID].lon;
+    cells[cellID].lat = layers[layerID].lat;
 
     for (int l=0; l<layersPerCell; ++l) {
       cells[cellID].height[l] = FLT_MAX;
@@ -255,7 +259,7 @@ namespace BARNEY_NS {
 
     // insert height/values pairs sorted:
     for (int l=0; l<layersPerCell; ++l) {
-      const ICONLayer &layer = layers[layerID*layersPerCell+l];
+      const ICONLayer &layer = layers[layerID+l];
       int idx=0;
       while (cells[cellID].height[idx] < layer.height) {
         idx++;
@@ -268,13 +272,6 @@ namespace BARNEY_NS {
       cells[cellID].height[idx] = layer.height;
       cells[cellID].value[idx] = layer.value;
     }
-
-    // for (int l=0; l<layersPerCell; ++l) {
-    //   if(cellID==3) {
-    //     printf("cellID: %i,height: %f, value: %f\n",
-    //         cellID,cells[cellID].height[l],cells[cellID].value[l]);
-    //   }
-    // }
   }
 
   RTC_IMPORT_TRIANGLES_GEOM(/*file*/IconField,/*name*/IconField,
@@ -296,10 +293,14 @@ namespace BARNEY_NS {
     majorantsGrid->computeMajorants(&volume->xf);
     sfSampler->build();
 
-    auto thisPass = std::make_shared<IconMultiPassLaunch>
-      (sampler);
+    auto thisPass = std::make_shared<IconMultiPassLaunch>(sampler,shared_from_this());
     volume->generatedPasses = { thisPass };
     
+    for (auto device : *devices) { 
+      //auto rtc = device->rtc;
+      PLD *pld = getPLD(device);
+      pld->rayGen = createTrace_traceRays_IconField(device->rtc);
+    }
 #if 0
     for (auto device : *devices) {
       SetActiveGPU forDuration(device);
@@ -336,23 +337,32 @@ namespace BARNEY_NS {
 #endif
   }
 
+  IconMultiPassAccel::PLD *IconMultiPassAccel::getPLD(Device *device)
+  {
+    assert(device);
+    assert(device->contextRank() >= 0);
+    assert(device->contextRank() < perLogical.size());
+    return &perLogical[device->contextRank()];
+  }
+
   void IconMultiPassLaunch::launch(Device *device,
                                    const render::World::DD &world,
                                    const affine3f &instanceXfm,
                                    render::Ray *rays,
                                    int numRays)
   {
-    // PING;
     int bs = 128;
     int nb = divRoundUp(numRays,bs);
-    auto rayGen = sampler->getPLD(device)->rayGen;
+    auto rayGen = accel->getPLD(device)->rayGen;
+
+    IconMultiPassSampler::DD samplerDD = sampler->getDD(device);
 
     OptixGlobals dd;
     dd.world = world;
     dd.rays = rays;
     dd.numRays = numRays;
     dd.accel = sampler->getPLD(device)->baseTrisTLAS->getDD();
-    dd.userData = (void *)sampler->getPLD(device)->cells;
+    dd.userData = (void *)&samplerDD;
     rayGen->launch(/* bs,nb intentionally inverted:
                       always have 1024 in width: */
                    vec2i(bs,nb),
@@ -362,7 +372,8 @@ namespace BARNEY_NS {
   IconMultiPassAccel::IconMultiPassAccel(Volume *volume,
                                          IconMultiPassSampler::SP sampler)
     : MCVolumeAccel<IconMultiPassSampler>(volume,nullptr,sampler),
-      sampler(sampler)
+      sampler(sampler),
+      perLogical(devices->size())
   {
     PING;
   }
@@ -389,8 +400,11 @@ namespace BARNEY_NS {
 
   IconMultiPassSampler::DD IconMultiPassSampler::getDD(Device *device)
   {
-    PING;
-    return { getPLD(device)->baseTrisTLAS->getDD() };
+    auto pld = getPLD(device);
+    DD dd;
+    dd.triMeshAccel = pld->baseTrisTLAS->getDD();
+    dd.cells        = pld->cells;
+    return dd;
   }
     
   void IconMultiPassSampler::build()
@@ -485,10 +499,12 @@ namespace BARNEY_NS {
           vec3f v1 = toCartesian({cell.height[0],cell.lat.x,cell.lon.x});
           vec3f v2 = toCartesian({cell.height[0],cell.lat.y,cell.lon.y});
           vec3f v3 = toCartesian({cell.height[0],cell.lat.z,cell.lon.z});
+          std::cout << v1 << v2 << v3 << '\n';
           vtx.push_back(v1);
           vtx.push_back(v2);
           vtx.push_back(v3);
           idx.push_back({int(i)*3,int(i)*3+1,int(i)*3+2});
+          std::cout << idx.back() << '\n';
         }
 
         // create a rtc group (ie tlas) for the given object that we
@@ -510,7 +526,7 @@ namespace BARNEY_NS {
         pld->baseTrisTLAS = tlas;
 
         
-        pld->rayGen = createTrace_traceRays_IconField(device->rtc);
+        //pld->rayGen = createTrace_traceRays_IconField(device->rtc);
       }
     }
   }
