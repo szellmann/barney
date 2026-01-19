@@ -10,26 +10,6 @@ namespace BARNEY_NS {
   using render::OptixGlobals;
 
   /* helpers */
-  inline __host__ __device__ vec3f toSpherical(const vec3f cartesian)
-  {
-    float r = length(cartesian);
-    float lat = asinf(cartesian.z/r);
-    float lon = atan2f(cartesian.y, cartesian.x);
-    return {r,lat,lon};
-  }
-
-  inline __host__ __device__ vec3f toCartesian(const vec3f spherical)
-  {
-    const float r = spherical.x;
-    const float lat = spherical.y;
-    const float lon = spherical.z;
-
-    float x = r * cosf(lat) * cosf(lon);
-    float y = r * cosf(lat) * sinf(lon);
-    float z = r * sinf(lat);
-    return {x,y,z};
-  }
-
   __host__ __device__
   inline unsigned morton_encode2D(unsigned x, unsigned y)
   {
@@ -253,6 +233,8 @@ namespace BARNEY_NS {
     cells[cellID].lon = layers[layerID].lon;
     cells[cellID].lat = layers[layerID].lat;
 
+    cells[cellID].numLayers = layersPerCell;
+
     for (int l=0; l<layersPerCell; ++l) {
       cells[cellID].height[l] = FLT_MAX;
     }
@@ -355,14 +337,14 @@ namespace BARNEY_NS {
     int nb = divRoundUp(numRays,bs);
     auto rayGen = accel->getPLD(device)->rayGen;
 
-    IconMultiPassSampler::DD samplerDD = sampler->getDD(device);
+    auto accelDD = accel->getDD(device);
 
     OptixGlobals dd;
     dd.world = world;
     dd.rays = rays;
     dd.numRays = numRays;
     dd.accel = sampler->getPLD(device)->baseTrisTLAS->getDD();
-    dd.userData = (void *)&samplerDD;
+    dd.userData = (void *)&accelDD;
     rayGen->launch(/* bs,nb intentionally inverted:
                       always have 1024 in width: */
                    vec2i(bs,nb),
@@ -404,6 +386,7 @@ namespace BARNEY_NS {
     DD dd;
     dd.triMeshAccel = pld->baseTrisTLAS->getDD();
     dd.cells        = pld->cells;
+    dd.numCells     = pld->numCells;
     return dd;
   }
     
@@ -524,9 +507,6 @@ namespace BARNEY_NS {
         tlas->buildAccel();
         
         pld->baseTrisTLAS = tlas;
-
-        
-        //pld->rayGen = createTrace_traceRays_IconField(device->rtc);
       }
     }
   }

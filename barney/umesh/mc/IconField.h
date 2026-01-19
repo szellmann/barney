@@ -22,6 +22,27 @@ namespace BARNEY_NS {
   using render::Ray;
   using render::DeviceMaterial;
 
+  /* helpers */
+  inline __host__ __device__ vec3f toSpherical(const vec3f cartesian)
+  {
+    float r = length(cartesian);
+    float lat = asinf(cartesian.z/r);
+    float lon = atan2f(cartesian.y, cartesian.x);
+    return {r,lat,lon};
+  }
+
+  inline __host__ __device__ vec3f toCartesian(const vec3f spherical)
+  {
+    const float r = spherical.x;
+    const float lat = spherical.y;
+    const float lon = spherical.z;
+
+    float x = r * cosf(lat) * cosf(lon);
+    float y = r * cosf(lat) * sinf(lon);
+    float z = r * sinf(lat);
+    return {x,y,z};
+  }
+
   struct ICONCell {
     enum { MaxLayers = 32 };
 
@@ -71,10 +92,26 @@ namespace BARNEY_NS {
       inline __rtc_device
       float sample(vec3f P, bool dbg) const
       {
-        return 0.f;
+        PRD prd;
+        prd.primID = -1;
+        owl::Ray ray;
+        ray.origin = owl::vec3f(P.x,P.y,P.z);
+        ray.direction = -normalize(ray.origin);
+        owl::traceRay((const OptixTraversableHandle &)triMeshAccel,
+            ray,
+            prd,
+            OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES);
+        if (prd.primID<0 || prd.primID>=numCells) return NAN;
+        const ICONCell &cell = cells[prd.primID];
+        const vec3f spherical = toSpherical(P);
+        if (spherical.x < cell.height[0] || spherical.x > cell.height[cell.numLayers])
+          return NAN;
+        //printf("%f\n",cell.getValue(spherical.x));
+        return cell.getValue(spherical.x);
       };
       rtc::AccelHandle triMeshAccel;
       ICONCell *cells;
+      int numCells;
     };
     
     struct PLD {
@@ -106,6 +143,8 @@ namespace BARNEY_NS {
   struct IconMultiPassAccel : public MCVolumeAccel<IconMultiPassSampler>,
                               public std::enable_shared_from_this<IconMultiPassAccel> {
     typedef std::shared_ptr<IconMultiPassAccel> SP;
+
+    // struct DD : public MCVolumeAccel<IconMultiPassSampler>::DD {};
 
     IconMultiPassAccel(Volume *volume,
                        IconMultiPassSampler::SP sampler);

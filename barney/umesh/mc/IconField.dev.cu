@@ -24,24 +24,6 @@ namespace BARNEY_NS {
       { /* TODO: getPRD, then set appropriate triangle ID */
         auto &prd = *(IconMultiPassSampler::PRD *)ti.getPRD();
         prd.primID = ti.getPrimitiveIndex();
-
-        auto &lp = OptixGlobals::get(ti);
-
-        const IconMultiPassSampler::DD &self = (IconMultiPassSampler::DD &)lp.userData;
-            //= *(IconMultiPassSampler::DD*)ti.getProgramData();
-
-        const int rayID
-          = ti.getLaunchIndex().x
-          + ti.getLaunchDims().x
-          * ti.getLaunchIndex().y;
-
-        Ray &ray = lp.rays[rayID];
-        float t = optixGetRayTmax();
-        vec4f sample;// = self.xf.map(0.5f);
-        //if (ray.dbg()) {
-        vec3f P = ray.org + ray.dir*t;
-        vec3f albedo(1.f);
-        ray.setVolumeHit(P,t,(const vec3f &)sample);
       }
       
     };
@@ -58,6 +40,11 @@ namespace BARNEY_NS {
     inline __rtc_device 
     void IconField_TraceRays::run(rtc::TraceInterface &ti)
     {
+#ifdef NDEBUG
+      enum { dbg = false };
+#else
+      const bool dbg = ray.dbg();
+#endif
       const int rayID
         = ti.getLaunchIndex().x
         + ti.getLaunchDims().x
@@ -65,10 +52,83 @@ namespace BARNEY_NS {
       //if (rayID == 0)
       //  printf("iconfield whole-frame launch ...\n");
 
-      const IconMultiPassSampler::DD &self
-          = *(IconMultiPassSampler::DD*)ti.getProgramData();
+      //const IconMultiPassAccel::DD &self
+      //    = *(IconMultiPassAccel::DD*)ti.getProgramData();
       auto &lp = OptixGlobals::get(ti);
 
+      auto &self = *(const IconMultiPassAccel::DD *)lp.userData;
+
+      if (rayID >= lp.numRays)
+        return;
+
+      Ray &ray = lp.rays[rayID];
+
+      box3f bounds = self.volume.sfCommon.worldBounds;
+      //range1f tRange = { ti.getRayTmin(), ti.getRayTmax() };
+      range1f tRange = { 0.f, FLT_MAX };
+    
+      vec3f obj_org = ray.org;//ti.getObjectRayOrigin();
+      vec3f obj_dir = ray.dir;//ti.getObjectRayDirection();
+
+      auto objRay = ray;
+      objRay.org = obj_org;
+      objRay.dir = obj_dir;
+
+      if (!boxTest(objRay,tRange,bounds))
+        return;
+    
+      // ------------------------------------------------------------------
+      // compute ray in macro cell grid space 
+      // ------------------------------------------------------------------
+      vec3f mcGridOrigin  = self.mcGrid.gridOrigin;
+      vec3f mcGridSpacing = self.mcGrid.gridSpacing;
+
+      vec3f dda_org = obj_org;
+      vec3f dda_dir = obj_dir;
+
+      dda_org = (dda_org - mcGridOrigin) * rcp(mcGridSpacing);
+      dda_dir = dda_dir * rcp(mcGridSpacing);
+
+      //Random rng(ray.rngSeed,hash(ti.getRTCInstanceIndex(),
+      //                            ti.getGeometryIndex(),0));
+      Random rng(ray.rngSeed,hash(0,0,0));
+
+      dda::dda3(dda_org,dda_dir,tRange.upper,
+                vec3ui(self.mcGrid.dims),
+                [&](const vec3i &cellIdx, float t0, float t1) -> bool
+                {
+                  const float majorant = self.mcGrid.majorant(cellIdx);
+                  
+                  if (majorant == 0.f) return true;
+                  
+                  vec4f   sample = 0.f;
+                  range1f tRange = {t0,min(t1,ray.tMax)};
+                  if (!Woodcock::sampleRange(sample,
+                                             self.volume,
+                                             obj_org,
+                                             obj_dir,
+                                             tRange,
+                                             majorant,
+                                             rng,
+                                             dbg)) 
+                    return true;
+                  if (dbg) printf("woodcock hit sample %f %f %f:%f\n",
+                                  sample.x,
+                                  sample.y,
+                                  sample.z,
+                                  sample.w);
+                  
+                  vec3f P_obj = obj_org + tRange.upper * obj_dir;
+                  vec3f P = P_obj;//ti.transformPointFromObjectToWorldSpace(P_obj);
+                  ray.setVolumeHit(P,
+                                   tRange.upper,
+                                   getPos(sample));
+                  //ti.reportIntersection(tRange.upper, 0);
+                  return false;
+                },
+                /*NO debug:*/false
+                );
+#if 0
       if (rayID >= lp.numRays)
         return;
       
@@ -97,7 +157,9 @@ namespace BARNEY_NS {
         //printf("t0:%f\n",t0);
         ray.tMax = t0;
       }
+#endif
     }
+
 #endif
 
   }
