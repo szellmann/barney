@@ -16,7 +16,6 @@ namespace BARNEY_NS {
                      int numValues,
                      float baseDensity) 
   {
-    std::cout << numValues << " SET XF ====================\n";
     std::vector<vec4f> values(numValues);
     memcpy(values.data(),_values,numValues*sizeof(*_values));
     xf.set(domain,values,baseDensity);

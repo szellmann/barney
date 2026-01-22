@@ -65,8 +65,10 @@ namespace BARNEY_NS {
     uint64_t mortonID;
     // lon/lat coordinates of base
     vec3f lon, lat;
-    // height of *this layer*
-    float height;
+    // bottomHeight of *this layer*
+    float bottomHeight;
+    // topHeight of *this layer*
+    float topHeight;
     // value of *this layer*
     float value;
   };
@@ -143,13 +145,13 @@ namespace BARNEY_NS {
     //      sv1.x,sv1.y,sv1.z,
     //      sv2.x,sv2.y,sv2.z);
     //}
-    //const vec3f sv3 = toSpherical(v3);
-    //const vec3f sv4 = toSpherical(v4);
-    //const vec3f sv5 = toSpherical(v5);
+    const vec3f sv3 = toSpherical(v3);
+    const vec3f sv4 = toSpherical(v4);
+    const vec3f sv5 = toSpherical(v5);
 
     // spherical centroids:
     const vec3f sc0 = (sv0+sv1+sv2)/3.f;
-    //const vec3f sc1 = (sv3+sv4+sv5)/3.f;
+    const vec3f sc1 = (sv3+sv4+sv5)/3.f;
 
     // values:
     const float valueBot = field.scalars[I[0]];
@@ -167,7 +169,8 @@ namespace BARNEY_NS {
     ICONLayer &layer = layers[cellID];
     layer.lon = vec3f(sv0.z,sv1.z,sv2.z);
     layer.lat = vec3f(sv0.y,sv1.y,sv2.y);
-    layer.height = sc0.x;//length(c0);
+    layer.bottomHeight = sc0.x;//length(c0);
+    layer.topHeight = sc1.x;//length(c0);
     layer.value = (valueBot+valueTop)*0.5f;
     // quantize, but avoid too much precision, otherwise
     // the morton codes will be falsely different......
@@ -243,7 +246,7 @@ namespace BARNEY_NS {
     for (int l=0; l<layersPerCell; ++l) {
       const ICONLayer &layer = layers[layerID+l];
       int idx=0;
-      while (cells[cellID].height[idx] < layer.height) {
+      while (cells[cellID].height[idx] < layer.bottomHeight) {
         idx++;
       }
       assert(idx < ICONCell::MaxLayers-1);
@@ -251,8 +254,14 @@ namespace BARNEY_NS {
         cells[cellID].height[l] = cells[cellID].height[l-1];
         cells[cellID].value[l] = cells[cellID].value[l-1];
       }
-      cells[cellID].height[idx] = layer.height;
+      cells[cellID].height[idx] = layer.bottomHeight;
       cells[cellID].value[idx] = layer.value;
+
+      // top height:
+      if (cells[cellID].height[layersPerCell] == FLT_MAX ||
+          cells[cellID].height[layersPerCell] < layer.topHeight) {
+        cells[cellID].height[layersPerCell] = layer.topHeight;
+      }
     }
   }
 
