@@ -63,6 +63,8 @@ namespace BARNEY_NS {
       case BN_FLOAT32_VEC2:
       case BN_INT32_VEC2:
       case BN_UINT32_VEC2:
+      case BN_UFIXED8_VEC2:
+      case BN_UFIXED16_VEC2:
         return 2;
       
       case BN_FLOAT32_VEC3:
@@ -74,6 +76,7 @@ namespace BARNEY_NS {
       case BN_INT32_VEC4:
       case BN_UINT32_VEC4:
       case BN_UFIXED8_RGBA:
+      case BN_UFIXED8_RGBA_SRGB:
         return 4;
       default:
         BARNEY_NYI();

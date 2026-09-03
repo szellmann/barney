@@ -60,6 +60,8 @@ namespace BARNEY_NS {
       FLOAT4,
       
       USHORT=40,
+      UCHAR2=41,
+      USHORT2=42,
     } DataType;
 
     typedef enum {

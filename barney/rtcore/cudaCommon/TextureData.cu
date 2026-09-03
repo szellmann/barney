@@ -37,6 +37,18 @@ namespace BARNEY_NS {
         readMode     = cudaReadModeNormalizedFloat;
         numScalarsPerTexel = 1;
         break;
+      case rtc::UCHAR2:
+        desc         = cudaCreateChannelDesc<uchar2>();
+        sizeOfScalar = 1;
+        readMode     = cudaReadModeNormalizedFloat;
+        numScalarsPerTexel = 2;
+        break;
+      case rtc::USHORT2:
+        desc         = cudaCreateChannelDesc<ushort2>();
+        sizeOfScalar = 2;
+        readMode     = cudaReadModeNormalizedFloat;
+        numScalarsPerTexel = 2;
+        break;
       case rtc::UCHAR4:
         desc         = cudaCreateChannelDesc<uchar4>();
         sizeOfScalar = 1;
