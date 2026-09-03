@@ -66,6 +66,15 @@ namespace BARNEY_NS {
       case BN_UFIXED16_VEC2:
         return rtc::USHORT2;
       
+      case BN_FLOAT16:
+        return rtc::HALF;
+      case BN_FLOAT16_VEC2:
+        return rtc::HALF2;
+      case BN_FLOAT16_VEC3:
+        return rtc::HALF3;
+      case BN_FLOAT16_VEC4:
+        return rtc::HALF4;
+      
       case BN_UFIXED8_RGBA:
       case BN_UFIXED8_RGBA_SRGB:
         return rtc::UCHAR4;
@@ -144,6 +153,10 @@ namespace BARNEY_NS {
       case BN_UFIXED8_RGBA_SRGB: return "BN_UFIXED8_RGBA_SRGB";
       case BN_UFIXED16:      return "BN_UFIXED16";
       case BN_UFIXED16_VEC2: return "BN_UFIXED16_VEC2";
+      case BN_FLOAT16:      return "BN_FLOAT16";
+      case BN_FLOAT16_VEC2: return "BN_FLOAT16_VEC2";
+      case BN_FLOAT16_VEC3: return "BN_FLOAT16_VEC3";
+      case BN_FLOAT16_VEC4: return "BN_FLOAT16_VEC4";
       
       default:
         throw std::runtime_error
@@ -221,6 +234,10 @@ namespace BARNEY_NS {
         return sizeof(vec4uc);
       case BN_UFIXED16:      return sizeof(uint16_t);
       case BN_UFIXED16_VEC2: return sizeof(vec2us);
+      case BN_FLOAT16:      return sizeof(uint16_t);
+      case BN_FLOAT16_VEC2: return sizeof(vec2us);
+      case BN_FLOAT16_VEC3: return 3*sizeof(uint16_t);
+      case BN_FLOAT16_VEC4: return 4*sizeof(uint16_t);
       
       default:
         throw std::runtime_error
@@ -339,6 +356,10 @@ namespace BARNEY_NS {
       case BN_UFIXED8_RGBA_SRGB:
       case BN_UFIXED16:
       case BN_UFIXED16_VEC2:
+      case BN_FLOAT16:
+      case BN_FLOAT16_VEC2:
+      case BN_FLOAT16_VEC3:
+      case BN_FLOAT16_VEC4:
         return std::make_shared<PODData>
           (context,devices,type);
       case BN_OBJECT:

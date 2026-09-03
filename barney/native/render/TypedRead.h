@@ -58,6 +58,25 @@ namespace BARNEY_NS {
         const vec2us v = ((const vec2us *)ptr)[i];
         return vec4f(v.x * (1.f/65535.f), v.y * (1.f/65535.f), 0.f, 1.f);
       }
+      case BN_FLOAT16: {
+        const uint16_t v = ((const uint16_t *)ptr)[i];
+        return vec4f(rtc::halfToFloat(v), 0.f, 0.f, 1.f);
+      }
+      case BN_FLOAT16_VEC2: {
+        const uint16_t *v = &((const uint16_t *)ptr)[i*2];
+        return vec4f(rtc::halfToFloat(v[0]), rtc::halfToFloat(v[1]),
+                     0.f, 1.f);
+      }
+      case BN_FLOAT16_VEC3: {
+        const uint16_t *v = &((const uint16_t *)ptr)[i*3];
+        return vec4f(rtc::halfToFloat(v[0]), rtc::halfToFloat(v[1]),
+                     rtc::halfToFloat(v[2]), 1.f);
+      }
+      case BN_FLOAT16_VEC4: {
+        const uint16_t *v = &((const uint16_t *)ptr)[i*4];
+        return vec4f(rtc::halfToFloat(v[0]), rtc::halfToFloat(v[1]),
+                     rtc::halfToFloat(v[2]), rtc::halfToFloat(v[3]));
+      }
       default:
         return vec4f(0.f, 0.f, 0.f, 0.f);
       };
