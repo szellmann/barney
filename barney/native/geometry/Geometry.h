@@ -5,7 +5,7 @@
 #pragma once
 
 #include "native/Object.h"
-#include "native/render/Ray.h"
+#include "native/render/WholeWaveIntersectKernel.h"
 #include "native/render/HitAttributes.h"
 #include "native/render/GeometryAttributes.h"
 #include "native/material/HostMaterial.h"
@@ -23,7 +23,7 @@ namespace BARNEY_NS {
         be on the "> 0" side of to be determined 'cut'. */
       int cutThreshold;
     };
-  
+
     struct Geometry : public Object {
       typedef std::shared_ptr<Geometry> SP;
 
@@ -76,11 +76,17 @@ namespace BARNEY_NS {
       HostMaterial::SP getMaterial() const;
       void setMaterial(HostMaterial::SP);
 
+      /*! @{ the different intersectable objects that this geometry
+          creates during 'build' */
       struct PLD {
         std::vector<rtc::Geom *>  triangleGeoms;
-        std::vector<rtc::Geom *>  userGeoms;
-        // std::vector<rtc::Group *> generatedGroups;
+        std::vector<rtc::Geom *>  userGeoms;        
       };
+      /*! a possible whole-wave kernel for this geom; this is not
+          inside our own PLD, but can manage its own PLD by itself */
+      WholeWaveIntersectKernel::SP wholeWaveKernel;
+      /*! @} */
+      
       PLD *getPLD(Device *device);
       std::vector<PLD> perLogical;
       DevGroup::SP const devices;

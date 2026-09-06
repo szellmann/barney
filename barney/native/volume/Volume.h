@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "native/common/barney-common.h"
 #include "native/Object.h"
+#include "native/render/WholeWaveIntersectKernel.h"
 #include "native/volume/TransferFunction.h"
 #include "native/volume/ScalarField.h"
 #include "native/volume/PrincipledVolume.h"
@@ -143,10 +143,17 @@ namespace BARNEY_NS {
       DevGroup::SP const devices;
       int userID = 0;
     
+      /*! @{ the different intersectable objects that this geometry
+          creates during 'build' */
       struct PLD {
         std::vector<rtc::Group *> generatedGroups;
         std::vector<rtc::Geom *>  generatedGeoms;
       };
+      /*! a possible whole-wave kernel for this geom; this is not
+          inside our own PLD, but can manage its own PLD by itself */
+      WholeWaveIntersectKernel::SP wholeWaveKernel;
+      /*! @} */
+      
       PLD *getPLD(Device *device);
       std::vector<PLD> perLogical;
     };
