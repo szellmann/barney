@@ -14,8 +14,11 @@ namespace BARNEY_NS {
                          /*name*/BlockStructuredMC,
                          /*geomtype device data */
                          MCVolumeAccel<BlockStructuredCuBQLSampler>::DD,false,false);
+    RTC_IMPORT_USER_GEOM(/*file*/BlockStructuredMC,/*name*/BlockStructuredMC_Iso,
+                         /*geomtype device data */
+                         MCIsoSurfaceAccel<BlockStructuredCuBQLSampler>::DD,false,false);
 
-    enum { MC_GRID_SIZE = 256 };
+    enum { MC_GRID_SIZE = 512 };
 
     BlockStructuredField::PLD *BlockStructuredField::getPLD(Device *device) 
     {
@@ -149,8 +152,9 @@ namespace BARNEY_NS {
 
     VolumeAccel::SP BlockStructuredField::createAccel(Volume *volume)
     {
-      auto sampler
-        = std::make_shared<BlockStructuredCuBQLSampler>(this);
+      if (!sampler)
+        sampler
+          = std::make_shared<BlockStructuredCuBQLSampler>(this);
       return std::make_shared<MCVolumeAccel<BlockStructuredCuBQLSampler>>
         (volume,
          createGeomType_BlockStructuredMC,
@@ -246,7 +250,25 @@ namespace BARNEY_NS {
 
       return false;
     }
-  
+
+    /*! creates an acceleration structure for a 'isoSurface' geometry
+      using this scalar field type */
+    IsoSurfaceAccel::SP BlockStructuredField::createIsoAccel(IsoSurface *isoSurface)
+    {
+      if (!sampler)
+        sampler = std::make_shared<BlockStructuredCuBQLSampler>(this);
+      return std::make_shared<MCIsoSurfaceAccel<BlockStructuredCuBQLSampler>>
+        (isoSurface,
+         createGeomType_BlockStructuredMC_Iso,
+         sampler);
+    }
+    
+    
+    /*! pretty-printer for printf-debugging */
+    std::string BlockStructuredField::toString() const
+    { return "barney::native::BlockStructuredField"; }
+    
+    
     void BlockStructuredField::commit()
     {
       assert(perBlock.origins);

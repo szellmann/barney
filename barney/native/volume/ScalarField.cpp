@@ -69,6 +69,10 @@ namespace BARNEY_NS {
       }
     }
 
+    /*! pretty-printer for printf-debugging */
+    std::string ScalarField::toString() const
+    { return "barney::native::ScalarField"; }
+    
     ScalarField::SP ScalarField::create(Context *context,
                                         const DevGroup::SP &devices,
                                         const std::string &type)

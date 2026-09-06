@@ -6,12 +6,14 @@
 
 #include "native/Object.h"
 #include "native/ModelSlot.h"
+#include "native/volume/MCAccelerator.h"
 
 namespace BARNEY_NS {
   namespace native {
     
     struct Block;
-  
+    struct BlockStructuredCuBQLSampler;
+    
     struct BlockStructuredField : public ScalarField
     {
       typedef std::shared_ptr<BlockStructuredField> SP;
@@ -24,7 +26,19 @@ namespace BARNEY_NS {
       };
       PLD *getPLD(Device *device);
       std::vector<PLD> perLogical;
+
+      /*! pretty-printer for printf-debugging */
+      std::string toString() const override;
+
+      /*! the sampler we create(d) for this object; lets us share this
+          across multiple volumes and iso-surfaces */
+      std::shared_ptr<BlockStructuredCuBQLSampler> sampler;
+      
+      /*! creates an acceleration structure for a 'isoSurface' geometry
+        using this scalar field type */
+      IsoSurfaceAccel::SP createIsoAccel(IsoSurface *isoSurface) override;
     
+      
       struct DD : public ScalarField::DD {
 
 #if RTC_DEVICE_CODE

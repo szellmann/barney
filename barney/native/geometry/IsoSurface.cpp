@@ -22,8 +22,10 @@ namespace BARNEY_NS {
       changes to transfer functoin (or later, scalar field) */
     void IsoSurface::build()
     {
+      PING;
       if (!accel) 
         return;
+      PING;
       accel->build();
     }
   
@@ -51,6 +53,7 @@ namespace BARNEY_NS {
         return true;
       if (member == "isoValue") {
         isoValue = value;
+        PING; PRINT(isoValue);
         return true;
       }
       return false;

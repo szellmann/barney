@@ -34,6 +34,9 @@ namespace BARNEY_NS {
                   const DevGroup::SP &devices,
                   const box3f &domain=box3f());
 
+      /*! pretty-printer for printf-debugging */
+      std::string toString() const override;
+      
       static ScalarField::SP create(Context *context,
                                     const DevGroup::SP &devices,
                                     const std::string &type);

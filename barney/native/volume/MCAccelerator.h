@@ -346,13 +346,14 @@ namespace BARNEY_NS {
       vec3f obj_dir = ti.getObjectRayDirection();
 
       if (dbg) {
-        printf("MCIsoAccel isec %f %f %f mcgrid %i %i %i\n",
+        printf("MCIsoAccel isec %f %f %f mcgrid %i %i %i, iso0=%f\n",
                obj_dir.x,
                obj_dir.y,
                obj_dir.z,
                self.mcGrid.dims.x,
                self.mcGrid.dims.y,
-               self.mcGrid.dims.z
+               self.mcGrid.dims.z,
+               self.isoSurface.isoValue
                );
       }
     
@@ -415,20 +416,31 @@ namespace BARNEY_NS {
              {
                float t = (isoValue - ff0) / (ff1-ff0);
                t = lerp_l(t,tRange.lower,tRange.upper);
+#if 1
+               tHit = tRange.lower;
+#else
                tHit = min(tHit,t);
+#endif
              };
                   
-
+             if (dbg) printf("found mc cell that overlaps range...\n");
              float tt1 = t0;
              vec3f P = obj_org + tt1 * obj_dir;
              ff1 = self.isoSurface.sfSampler.sample(P,dbg);
-             int numSteps = 10; 
+             int numSteps = 10;
+
+             if (dbg) printf("value at entry t=%f, d=%f\n",
+                             tt1,ff1);
              for (int i=1;i<=numSteps;i++) {
                float tt0 = tt1;
                ff0 = ff1;
                tt1 = lerp_l(i/float(numSteps),_t0,_t1);
                P = obj_org + tt1 * obj_dir;
                ff1 = self.isoSurface.sfSampler.sample(P,dbg);
+
+               if (dbg) printf("step %i: value at t=%f, d=%f\n",
+                               i,tt1,ff1);
+               
                if (isnan(ff0) || isnan(ff1)) continue;
                   
                valueRange.lower = min(ff0,ff1);
