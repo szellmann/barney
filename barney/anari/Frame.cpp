@@ -196,19 +196,19 @@ namespace BARNEY_NS {
 
       auto model = m_world->makeCurrent();
 
-      if (m_lastFrameWasFirstFrame && m_channelTypes.depth != ANARI_UNKNOWN
+      if (m_lastFrameWasFirstFrame && m_lastFrameChannelTypes.depth != ANARI_UNKNOWN
           && !m_didMapChannel.depth)
         reportMessage(ANARI_SEVERITY_PERFORMANCE_WARNING,
                       "last frame had a depth buffer request, but never mapped it");
-      if (m_lastFrameWasFirstFrame && m_channelTypes.primID != ANARI_UNKNOWN
+      if (m_lastFrameWasFirstFrame && m_lastFrameChannelTypes.primID != ANARI_UNKNOWN
           && !m_didMapChannel.primID)
         reportMessage(ANARI_SEVERITY_PERFORMANCE_WARNING,
                       "last frame had a primID buffer request, but never mapped it");
-      if (m_lastFrameWasFirstFrame && m_channelTypes.objID != ANARI_UNKNOWN
+      if (m_lastFrameWasFirstFrame && m_lastFrameChannelTypes.objID != ANARI_UNKNOWN
           && !m_didMapChannel.objID)
         reportMessage(ANARI_SEVERITY_PERFORMANCE_WARNING,
                       "last frame had a objID buffer request, but never mapped it");
-      if (m_lastFrameWasFirstFrame && m_channelTypes.instID != ANARI_UNKNOWN
+      if (m_lastFrameWasFirstFrame && m_lastFrameChannelTypes.instID != ANARI_UNKNOWN
           && !m_didMapChannel.instID)
         reportMessage(ANARI_SEVERITY_PERFORMANCE_WARNING,
                       "last frame had a instID buffer request, but never mapped it");
@@ -234,6 +234,7 @@ namespace BARNEY_NS {
       m_didMapChannel.primID = false;
       m_didMapChannel.instID = false;
       m_didMapChannel.objID = false;
+      m_lastFrameChannelTypes = m_channelTypes;
 
       auto end = std::chrono::steady_clock::now();
       m_duration = std::chrono::duration<float>(end - start).count();
