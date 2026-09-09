@@ -9,6 +9,7 @@
 
 namespace BARNEY_NS {
 
+
   rtc::DataType toRTC(BNDataType type)
   {
     switch (type) {
